@@ -1,0 +1,644 @@
+HELP: в отчет указывается то что было сделано (опирайтесь на задание)
+      #su - > Если не работает команда
+      #systemctl disabled --now systemd-resolved.service > Автовыдается /etc/resolv.conf
+      #systemctl restart network / #systemctl restart networking > Если что-то не работает
+      Insert на клавиатуре чтобы редактировать файл в редакторе #vim
+      Escape + :wq > Сохранение файла + выход в #vim
+      Ctrl+C > закончить какой-либо процесс будь то пинг или показ мусора на экране 
+vim /etc/bind/zone/au-team.irpo < если в 10. не заведется написанное (эта + 4 строки ниже)
+        IN 	A	192.168.100.2
+hq-srv	IN 	A 	192.168.100.2
+vim etc/bind/zone/100.168.192.in-addr.arpa
+2	IN	PTR 	hq-srv.au-team.irpo
+
+
+
+1.
+
+<ISP>
+hostnamectl set-hostname isp; exec bash
+
+<HQ-RTR>
+hostname hq-rtr
+ip domain-name au-team.irpo
+write memory
+
+<HQ-SRV>
+hostnamectl set-hostname hq-srv.au-team.irpo; exec bash
+
+<HQ-CLI>
+В сетевом центре управления дать имя компьютеру hq-cli.au-team.irpo
+Ребут машины
+
+<BR-RTR>
+hostname br-rtr
+ip domain-name au-team.irpo
+
+<BR-SRV>
+hostnamectl set-hostname br-srv.au-team.irpo; exec bash
+
+
+<HQ-RTR>
+#show port brief - просмотр портов
+#do show port te - сверка мак адресов бриджей
+interface isp
+description "Connect ISP"
+ip address 172.16.1.14/28
+port te0
+service-instance te0/isp
+encapsulation untagged
+connect ip interface isp
+
+interface vl100
+description "Servers - vlan100"
+ip address 192.168.100.1/27
+interface vl200
+description "Clients - vlan200"
+ip address 192.168.100.65/28
+interface vl999
+description "Managements - vlan999"
+ip address 192.168.100.81/29
+port te1
+service-instance te1/vl100
+encapsulation dot1q 100 exact
+rewrite pop 1
+connect ip interface vl100
+service-instance te1/v200
+encapsulation dot1q 200 exact
+rewrite pop 1
+connect ip interface vl200
+service-instance te1/vl999
+encapsulation dot1q 999 exact
+rewrite pop 1
+connect ip interface vl999
+write memory
+do show interface description
+do show ip interface brief
+
+ip route 0.0.0.0/0 172.168.4.1
+
+<BR-RTR>
+interface isp 
+description "Connect ISP"
+ip address 172.16.2.14/28
+port te0
+service-instance te0/isp
+encapsulation untagged
+connect ip interface isp
+interface BR-Net
+description "Connect BR-Net"
+ip address 192.168.200.1/28
+port te1
+service-instance te1/BR-Net
+encapsulation untagged
+connect ip interface BR-Net
+
+ip route 0.0.0.0/0 172.168.5.1
+write memory
+
+<HQ-SRV>
+ip -c a
+mv /etc/net/ifaces/ens1{8,9}
+vim /etc/net/ifaces/ens19/options
+	#Оставить только TYPE=eth
+			 BOOTPROTO=static
+			 DISABLED=no
+echo "192.168.100.2/27" > /etc/net/ifaces/ens19/ipv4address
+echo "default via 192.168.100.1" > /etc/net/ifaces/ens19/ipv4route
+echo "nameserver 10.2.0.3" > /etc/net/ifaces/ens19/resolv.conf
+systemctl restart network
+
+<HQ-CLI>
+#В Альтераторе > ipv4 settnigs DHCP
+
+<BR-SRV>
+ip -c a
+mv /etc/net/ifaces/ens1{8,9}
+vim /etc/net/ifaces/ens19/options
+	#Оставить только TYPE=eth
+			 BOOTPROTO=static
+			 DISABLED=no
+echo "192.168.200.2/28" > /etc/net/ifaces/ens19/ipv4address
+echo "default via 192.168.200.1" > /etc/net/ens19/ipv4route
+echo "nameserver 10.2.0.3" > /etc/net/ifaces/ens19/resolv.conf
+systemctl restart network
+
+2.
+
+<ISP>
+nano /etc/network/interfaces
+auto eth0
+	iface eth0 inet dhcp
+auto eth1
+	iface eth1 inet static
+	address 172.16.1.1/28
+auto eth2
+	iface eth2 inet static
+	address 172.16.2.1/28
+Insert на клавиатуре чтобы редактировать файл
+Escape + :wq > Сохранение файла + выход
+
+ip -c a
+nano /etc/net/sysctl.conf
+	ip forward = 1
+	systemctl restart networking
+	sysctl -a | grep "ip_forward"
+
+apt-get update
+apt-get install iptables -y
+ip -c -br -4 a
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+#На роутере проверить пинг в интернет
+iptables-save > /root/rules
+crontab -e
+@reboot /sbin/iptables-restore < /root/rules
+#Сохранение записи файла :wq
+
+iptables -t nat -L -n -v
+
+3.
+
+<HQ-SRV>
+userdadd sshuser -u 2026
+passwd sshuser
+P@ssw0rd
+usermod -aG wheel sshuser
+echo "sshuser ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+su - sshuser
+sudo -i
+
+<BR-SRV>
+useradd sshuser -u 2026
+passwd sshuser
+P@ssw0rd
+usermod -aG wheel sshuser
+echo "sshuser ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+su - sshuser
+sudo -i
+
+<HQ-RTR>
+username net_admin
+password P@ssw0rd 
+role admin
+ex
+write memory
+#Выполнить из под него вход
+
+<BR-RTR>
+username net_admin
+password P@ssw0rd
+role admin
+ex
+write memory
+#Выполнить из под него вход
+
+4. SKIP (выполнено)
+
+5.
+
+<BR-SRV>
+vim /etc/openssh/sshd_config
+	Port 2026
+	#Добавить AllowUsers в #Logging
+	AllowUsers sshuser
+	MaxAuthTries 2
+	Banner /etc/openssh/banner
+echo "Authorized access only" > /etc/openssh/banner
+systemctl sshd.service
+#Проверка работоспособности ssh
+ssh -p 2026 sshuser@localhost
+P@ssw0rd
+exit
+<HQ-SRV>
+vim /etc/openssh/sshd_config
+	Port 2026
+	#Добавить AllowUsers в #Logging
+	AllowUsers sshuser
+	MaxAuthTries 2
+	Banner /etc/openssh/banner
+echo "Authorized access only" > /etc/openssh/banner
+systemctl sshd.service
+#Проверка работоспособности ssh
+ssh -p 2026 sshuser@localhost
+P@ssw0rd
+exit
+
+6.
+
+<HQ-RTR>
+interface tunnel.0
+description "GRE-to-BR"
+ip address 10.10.10.1/30
+ip tunnel 172.16.1.14 172.16.2.14 mode gre
+write memory
+show ip interface brief
+
+<BR-RTR>
+interface tunnel.0
+description "GRE-to-HQ"
+ip address 10.10.10.2/30
+ip tunnel 172.16.2.14 172.16.1.14 mode gre
+write memory
+show ip interface brief
+do ping 10.10.10.1
+Ctrl+C
+
+7.
+
+<HQ-RTR>
+router ospf 1
+ospf router-id 10.10.10.1
+passive-interface default
+no passive-interface tunnel.0
+network 10.10.10.0/30 area 0
+network 192.168.100.0/27 area 0
+network 192.168.100.64/28 area 0
+network 192.168.100.80/29 area 0
+exit
+interface tunnel.0
+ip ospf authentification message-digest
+ip ospf message-digest-key 1 md5 P@ssw0rd
+write memory
+do show ip ospf interface tunnel.0
+#Последняя строчка должна быть authentication
+
+
+<BR-RTR>
+router ospf 1
+ospf router-id 10.10.10.2
+passive-interface default
+no passive-interface tunnel.0
+network 10.10.10.0/30 area 0
+network 192.168.200.0/28 area 0
+exit
+interface tunnel.0
+ip ospf authentification message-digest
+ip ospf message-digest-key 1 md5 P@ssw0rd
+do show ip ospf neighbor
+do show ip ospf interface tunnel.0
+#Последняя строчка должна быть authentication
+
+#На сервере BR проверить пинг 
+ping 192.168.100.2
+CTRL+C
+#Проверка пути пинга
+tracepath -n 192.168.100.2
+
+
+8.
+
+<HQ-RTR>
+interface isp
+ip nat outside
+exit
+interface vl100 
+ip nat inside
+exit
+interface vl200
+ip nat inside
+exit
+interface vl999
+ip nat inside
+exit
+ip nat pool HQ 192.168.100.1-192.168.100.254
+ip nat source dynamic inside-to-outside pool HQ overload interface isp
+wrire memory
+'Проверить с HQ-SRV пинг в ya.ru, настроить DNS по нужде 10.2.0.3 
+(vim /etc/resolv.conf)
+nameserver 10.2.0.3'
+
+<BR-RTR>
+interface isp
+ip nat outside
+exit
+interface BR-Net
+ip nat inside
+exit
+ip nat pool BR 192.168.200.1-192.168.200.254
+ip nat source dynamic inside-to-outside pool BR overload interface isp
+write memory
+#Проверить с BR-SRV пинг в ya.ru, настроить DNS по нужде 10.2.0.3
+#Проверить таблицу ip nat трансляции на BR-RTR
+do show ip nat translations
+
+9.
+
+<HQ-RTR>
+dhcp-server 1
+ip pool HQ 192.168.100.66-192.168.100.78
+dhcp-server 1
+pool HQ 1
+mask 28
+gateway 192.168.100.65
+dns 192.168.100.2
+domain-name au-team.irpo
+exit
+write memory
+interface vl200 
+dhcp-server 1
+
+<HQ-CLI>
+ip -c a
+ip -c r
+cat /etc/resolv.conf
+ping ya.ru
+CTRL+C
+
+10.
+
+<HQ-SRV>
+apt-get update 
+apt-get install bind bind-utils -y
+vim /etc/bind/options.conf
+#Все писать строго в тех фигурных скобках и с пунктуальными знаками как там
+#В начале кажого из этих параметров удалить "//"
+listen-on { 192.168.100.2; }; 
+listen-on-ipv6 { none; };
+forwarders { 10.2.0.3; };
+allow-query { any; };
+allow-recursion { any; };
+
+vim /etc/bind/rfc1912.conf
+zone "au-team.irpo" {
+	type master
+	file "au-team.irpo";
+};
+
+zone "100.168.192.in-addr.arpa" {
+	type master
+	file "100.168.192.in-addr.arpa"
+};
+#Сохранение записи файла :wq
+
+cp /etc/bind/zone/empty /etc/bind/zone/au-team.irpo
+vim /etc/bind/zone/au-team.irpo
+#Localhost везде заменить на au-team.irpo
+#Строка после которой писать должна быть: IN	NS	au-team.ipro. (au-team.irpo ставится вместо localhost)
+	IN 	A	192.168.100.2
+hq-srv	IN 	A 	192.168.100.2
+hq-rtr  IN	A	192.168.100.1
+br-rtr  IN	A	192.168.200.1
+hq-cli  IN	A	192.168.100.65 (смотрите ip-адрес cli)
+br-srv  IN	A	192.168.200.2
+isp     IN	A	172.16.4.1
+isp     IN	A	172.16.5.1
+#Сохранение записи файла :wq
+
+cp /etc/bind/zone/au-team.irpo etc/bind/zone/100.168.192.in-addr.arpa
+vim etc/bind/zone/100.168.192.in-addr.arpa
+
+2	IN	PTR 	hq-srv.au-team.irpo.
+65	IN	PTR	hq-cli.au-team.irpo.
+1	IN	PTR	hq-rtr.au-team.irpo.
+#Сохранение записи файла :wq
+
+ls -l /etc/bind/zone
+chown root:named etc/bind/zone/au-team.irpo
+chown root:named etc/bind/zone/100.168.192.in-addr.arpa
+systemctl enable --now bind
+systemctl status bind.service
+
+<HQ-CLI>
+cat /etc/resolv.conf
+#Должен быть IP сервера
+host hq-srv.au-team.irpo
+host 192.168.100.2
+host ya.ru
+
+11.
+
+<HQ-SRV>
+timedatectl 
+timedatectl set-timezone Europe/Moscow
+
+<BR-SRV>
+timedatectl 
+timedatectl set-timezone Europe/Moscow
+
+<HQ-RTR>
+do show ntp timezone
+ntp timezone utc+3
+write memory
+
+<BR-RTR>
+do show ntp timezone
+ntp timezone utc+3
+write memory
+
+<ISP>
+timedatectl 
+timedatectl set-timezone Europe/Moscow
+
+
+
+2 Module
+
+1.
+
+<BR-SRV>
+apt-get update && apt-get install task-samba-dc -y
+rm -rf /var/lib/samba
+rm -rf /var/cache/samba
+mkdir -p /var/lib/samba/sysvol
+vim /etc/resolv.conf 
+nameserver 127.0.0.1
+
+<HQ-RTR>
+dhcp-server 1
+pool HQ 1
+dns 192.168.200.2,192.168.100.2
+
+<BR-SRV>
+rm /etc/samba/smb.conf
+samba-tool domain provision --realm=au-team.irpo --domain=au-team.irpo (или --domain=au-team, если будет ошибка) --adminpass='P@ssw0rd' --dns-backed=SAMBA_INTERNAL --option="dns forvarder = 192.168.100.2" --server-role=dc --use-rfc2307
+cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
+systemctl enable --now samba
+samba-tool domain info 127.0.0.1
+apt-get install bind-utils -y 
+ping ya.ru
+host -t SRV _kerberos._udp.au-team.irpo
+kinit administrator@AU-TEAM.IRPO
+P@ssw0rd
+
+<HQ-CLI>
+apt-get install task-auth-ad-sssd admc gpui -y
+переподключить интернет в графическом интерфейсе
+cat /etc/resolv.conf
+#Должен прилететь первый ip x.x.200.2
+В альтераторе выбрать Аутентификацию домен:au-team.irpo группа:au-team > применить
+reboot
+
+<BR-RTR>
+samba-tool user add hquser1
+P@ssw0rd
+samba-tool user add hquser2
+P@ssw0rd
+samba-tool user add hquser3
+P@ssw0rd
+samba-tool user add hquser4
+P@ssw0rd
+samba-tool user add hquser5
+P@ssw0rd
+
+<HQ-ClI>
+зайти под administrator
+P@ssw0rd
+в приложениях открыть admcd
+au-team.irpo > users > пкм в окне с юзерами > создать группу > hq
+закинуть туда всех созданных ранее юзеров с помощью пкм
+sudo -i
+control sudo > показывает группу от которой можно выполнять повышение привелегий
+control sudo public 
+nano /etc/sudoers
+%hq ALL=(root) /usr/bin/id, /bin/grep, /bin/cat > добавить сразу после %wheel
+reboot под hquser1 
+sudo id
+sudo -i
+
+2.
+
+<HQ-SRV>
+lsblk 
+apt-get install mdadm nfs-server -y
+mdadm --create /dev/md0 -l 5 -n 2 /dev/sd{b,c} < смотря какие названия дисков
+lsblk
+echo "DEVICE partitions" > /etc/mdadm.conf
+mdadm --detail --scan | awk '/ARRAY/ {print}' >> /etc/mdadm.conf
+vim /etc/mdadm.conf
+wq
+mkfs.ext4 /dev/md0
+mkdir /raid5
+blkid /dev/md0
+blkid /dev/md0 >> /etc/fstab
+vim /etc/fstab
+UUID ******* /raid5 ext4 defaults 0 0 < предварительно удалить кавычки и все кроме UUID 
+wq
+mount -a 
+lsblk 
+df -h < проверка 
+
+3.
+
+<HQ-SRV>
+mkdir /raid/nfs
+vim /etc/exports
+/raid/nfs 192.168.100.64/28(sync,rw,no_root_squash)
+wq
+systemctl enable -- now nfs-server
+exportfs
+
+<HQ-CLI>
+user - заход под ним
+sudo -i 
+apt-get install nfs-clients 
+mkdir /mnt/nfs
+
+<BR-SRV>
+samba-tool computer add hq-srv --ip-address=192.168.100.2
+samba-tool computer add br-rtr --ip-address=192.168.200.1
+samba-tool computer add hq-rtr --ip-address=192.168.100.1
+
+<HQ-CLI>
+ping hq-srv
+mount hq-srv:/raid5/nfs /mnt/nfs
+df -h < наличие одноименного диска 
+echo "chinazes" > /mnt/nfs/chinazes
+
+<HQ-SRV>
+cd /raid/nfs
+ls
+
+<HQ-CLI>
+chmod 777 /mnt/nfs
+vim /etc/fstab
+hq-srv:/raid/nfs mnt/nfs nfs defaults 0 0
+wq
+mount -a 
+umount /mnt/nfs
+df -h 
+mount -a 
+lsblk
+reboot 
+df -h
+echo "chinazes" > /mnt/nfs/chinazes
+
+<HQ-SRV>
+ls
+
+4.
+
+<ISP>
+vim /etc/chrony.conf
+pool 2.ru.pool.ntp.org iburst
+local stratum 5
+allow 0/0
+wq
+systemctl enable --now chronyd
+systemctl status chronyd
+
+<HQ-CLI>
+nano /etc/chrony.conf
+pool 172.16.1.1 iburst 
+systemctl restart chronyd
+
+<BR-RTR>
+ntp server 172.16.5.1
+
+<ISP>
+chronyc clients < должны быть 4.1 и 5ю1
+
+5.
+
+<BR-SRV>
+ssh-keygen 
+<spase spam>
+apt-get insatall ansible -y
+
+<HQ-RTR>
+security none
+
+<BR-RTR>
+security none 
+
+<BR-SRV>
+ssh net_admin@hq-rtr
+exit
+ssh net_admin@br-rtr
+exit
+vim /etc/ansible/ansible.cfg
+interpreter_python=/usr/bin/python3 < писать после defaults
+wq
+apt-get install python3
+
+<HQ-SRV>
+apt-get install python3
+
+<BR-SRV>
+ssh-copy-id -p 2026 sshuser@hq-srv
+
+<HQ-CLI>
+systemctl enable --now sshd
+useradd sshuser
+passwd sshuser
+P@ssw0rd
+
+<BR-SRV>
+ssh-copy-id sshuser@hq-srv
+ssh-copy-id sshuser@br-srv
+ssh sshuser@hq-cli < должно войти без пароля
+exit
+ssh sshuser@hq-srv -p 2026
+exit
+apt-get install sshpass -y
+vim /etc/ansible/hosts
+[servers]
+hq-srv ansible_ssh_user=sshuser ansible_ssh_port=2026
+hq-srv ansible_ssh_user=sshuser
+[cli]
+hq-cli ansible_ssh_user=sshuser
+[eco]
+hq-rtr ansible_user=net_admin ansible password=P@ssw0rd ansible_connection=network_cli ansible_network_os=ios
+br-rtr ansible_user=net_admin ansible password=P@ssw0rd ansible_connection=network_cli ansible_network_os=ios
+wq
+systemctl enable --now sshd
+ansible -n ping all
